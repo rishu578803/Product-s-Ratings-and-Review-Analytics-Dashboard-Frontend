@@ -23,7 +23,7 @@ Product's Ratings and Review Analytics Dashboard
 
 ### Clone Repository
 
-git clone https://github.com/yourusername/project-name.git
+git clone https://github.com/rishu578803/Product-s-Ratings-and-Review-Analytics-Dashboard-Frontend
 
 cd project-name
 
