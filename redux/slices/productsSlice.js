@@ -4,12 +4,27 @@ const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
 export const fetchProducts = createAsyncThunk(
   "products/fetchProducts",
-  async (page = 1, { rejectWithValue }) => {
+  async (
+    {
+      page = 1,
+      search = "",
+      category = "",
+      ratingMin = "",
+      ratingMax = "",
+    } = {},
+    { rejectWithValue },
+  ) => {
     try {
-      const res = await fetch(`${baseUrl}/product?page=${page}&limit=10`);
+      const params = new URLSearchParams({ page, limit: 10 });
+
+      if (search) params.set("search", search);
+      if (category) params.set("category", category);
+      if (ratingMin) params.set("rating_min", ratingMin);
+      if (ratingMax) params.set("rating_max", ratingMax);
+
+      const res = await fetch(`${baseUrl}/product?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      return json;
+      return await res.json();
     } catch (err) {
       return rejectWithValue(err.message);
     }
@@ -24,6 +39,12 @@ const initialState = {
     totalPages: 0,
     limit: 10,
   },
+  filters: {
+    search: "",
+    category: "",
+    ratingMin: "",
+    ratingMax: "",
+  },
   loading: false,
   error: null,
 };
@@ -34,6 +55,19 @@ const productsSlice = createSlice({
   reducers: {
     setPage(state, action) {
       state.pagination.currentPage = action.payload;
+    },
+    setFilters(state, action) {
+      state.filters = { ...state.filters, ...action.payload };
+      state.pagination.currentPage = 1;
+    },
+    resetFilters(state) {
+      state.filters = {
+        search: "",
+        category: "",
+        ratingMin: "",
+        ratingMax: "",
+      };
+      state.pagination.currentPage = 1;
     },
   },
   extraReducers: (builder) => {
@@ -54,5 +88,5 @@ const productsSlice = createSlice({
   },
 });
 
-export const { setPage } = productsSlice.actions;
+export const { setPage, setFilters, resetFilters } = productsSlice.actions;
 export default productsSlice.reducer;

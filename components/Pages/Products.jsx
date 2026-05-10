@@ -1,8 +1,13 @@
 "use client";
 
-import { memo, useEffect } from "react";
+import { memo, useEffect, useCallback, useRef } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { fetchProducts, setPage } from "../../redux/slices/productsSlice.js";
+import {
+  fetchProducts,
+  setPage,
+  setFilters,
+  resetFilters,
+} from "../../redux/slices/productsSlice.js";
 import { fetchStats } from "../../redux/slices/statsSlice.js";
 import { StatCard } from "@/components/Dashboard/index.js";
 import {
@@ -13,10 +18,28 @@ import {
   ChevronRight,
   Loader2,
   AlertCircle,
+  Search,
+  X,
 } from "lucide-react";
 
-const topCategory = (cat = "") => cat.split("|")[0];
+const CATEGORIES = [
+  "",
+  "Electronics",
+  "Clothing",
+  "Home & Kitchen",
+  "Books",
+  "Sports",
+];
 
+const RATING_RANGES = [
+  { label: "All Ratings", min: "", max: "" },
+  { label: "4 - 5", min: "4", max: "5" },
+  { label: "3 - 4", min: "3", max: "4" },
+  { label: "2 - 3", min: "2", max: "3" },
+  { label: "Below 2", min: "0", max: "2" },
+];
+
+const topCategory = (cat = "") => cat.split("|")[0];
 const formatINR = (val) =>
   new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -26,38 +49,77 @@ const formatINR = (val) =>
 
 export const ProductsPageContent = memo(function ProductsPageContent() {
   const dispatch = useDispatch();
+  const debounceRef = useRef(null);
 
   const {
     totalProducts,
     averageRating,
     avgDiscount,
     loading: statsLoading,
-  } = useSelector((state) => state.stats);
-
-  const { products, pagination, loading, error } = useSelector(
-    (state) => state.products,
+  } = useSelector((s) => s.stats);
+  const { products, pagination, filters, loading, error } = useSelector(
+    (s) => s.products,
   );
 
   useEffect(() => {
-    if (totalProducts === 0) {
-      dispatch(fetchStats());
-    }
+    if (totalProducts === 0) dispatch(fetchStats());
   }, [dispatch, totalProducts]);
 
   useEffect(() => {
-    dispatch(fetchProducts(pagination.currentPage));
-  }, [dispatch, pagination.currentPage]);
+    dispatch(
+      fetchProducts({
+        page: pagination.currentPage,
+        search: filters.search,
+        category: filters.category,
+        ratingMin: filters.ratingMin,
+        ratingMax: filters.ratingMax,
+      }),
+    );
+  }, [dispatch, pagination.currentPage, filters]);
+
+  const handleSearchChange = useCallback(
+    (e) => {
+      const value = e.target.value;
+      clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        dispatch(setFilters({ search: value }));
+      }, 400);
+    },
+    [dispatch],
+  );
+
+  const handleCategoryChange = (e) =>
+    dispatch(setFilters({ category: e.target.value }));
+
+  const handleRatingChange = (e) => {
+    const range = RATING_RANGES[e.target.value];
+    dispatch(setFilters({ ratingMin: range.min, ratingMax: range.max }));
+  };
+
+  const handleReset = () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    document.getElementById("product-search").value = "";
+    dispatch(resetFilters());
+  };
+
+  const hasActiveFilters =
+    filters.search || filters.category || filters.ratingMin;
 
   const handlePage = (newPage) => {
     if (newPage < 1 || newPage > pagination.totalPages) return;
     dispatch(setPage(newPage));
   };
 
+  const selectedRatingIndex = RATING_RANGES.findIndex(
+    (r) => r.min === filters.ratingMin && r.max === filters.ratingMax,
+  );
+
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-gray-900">Products</h2>
 
-      {/*  Stat Cards */}
+      {/* Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Total Products"
@@ -81,7 +143,59 @@ export const ProductsPageContent = memo(function ProductsPageContent() {
         />
       </div>
 
-      {/*  Product Table  */}
+      <div className="bg-white rounded-lg shadow-sm p-4 flex flex-wrap gap-3 items-center">
+        {/* Search */}
+        <div className="relative flex-1 min-w-[200px]">
+          <Search
+            size={15}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+          />
+          <input
+            id="product-search"
+            type="search"
+            placeholder="Search by product name…"
+            defaultValue={filters.search}
+            onChange={handleSearchChange}
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-300"
+          />
+        </div>
+
+        {/* Category */}
+        <select
+          value={filters.category}
+          onChange={handleCategoryChange}
+          className="py-2 px-3 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-300 bg-white text-gray-700">
+          <option value="">All Categories</option>
+          {CATEGORIES.filter(Boolean).map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+
+        {/* Rating range */}
+        <select
+          value={selectedRatingIndex < 0 ? 0 : selectedRatingIndex}
+          onChange={handleRatingChange}
+          className="py-2 px-3 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-300 bg-white text-gray-700">
+          {RATING_RANGES.map((r, i) => (
+            <option key={i} value={i}>
+              {r.label}
+            </option>
+          ))}
+        </select>
+
+        {/* Clear filters */}
+        {hasActiveFilters && (
+          <button
+            onClick={handleReset}
+            className="flex items-center gap-1 px-3 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
+            <X size={14} /> Clear
+          </button>
+        )}
+      </div>
+
+      {/* Product Table */}
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
         <div className="p-6 border-b border-gray-200 flex items-center justify-between">
           <h3 className="text-lg font-semibold">Product List</h3>
@@ -100,30 +214,22 @@ export const ProductsPageContent = memo(function ProductsPageContent() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">
-                  Product ID
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">
-                  Name
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">
-                  Category
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">
-                  Actual Price
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">
-                  Sale Price
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">
-                  Discount
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">
-                  Rating
-                </th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600">
-                  Reviews
-                </th>
+                {[
+                  "Product ID",
+                  "Name",
+                  "Category",
+                  "Actual Price",
+                  "Sale Price",
+                  "Discount",
+                  "Rating",
+                  "Reviews",
+                ].map((h) => (
+                  <th
+                    key={h}
+                    className="px-4 py-3 text-left font-semibold text-gray-600">
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -197,7 +303,6 @@ export const ProductsPageContent = memo(function ProductsPageContent() {
                 className="p-1.5 rounded-md border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                 <ChevronLeft size={16} />
               </button>
-
               {Array.from(
                 { length: Math.min(5, pagination.totalPages) },
                 (_, i) => {
@@ -224,7 +329,6 @@ export const ProductsPageContent = memo(function ProductsPageContent() {
                   );
                 },
               )}
-
               <button
                 onClick={() => handlePage(pagination.currentPage + 1)}
                 disabled={
